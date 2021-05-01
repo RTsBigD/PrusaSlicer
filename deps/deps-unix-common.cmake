@@ -34,6 +34,7 @@ ExternalProject_Add(dep_gtest
     EXCLUDE_FROM_ALL 1
     URL "https://github.com/google/googletest/archive/release-1.8.1.tar.gz"
     URL_HASH SHA256=9bf1fe5182a604b4135edc1a425ae356c9ad15e9b23f9f12a02e80184c3a249c
+    PATCH_COMMAND   patch -p1 -i ${CMAKE_CURRENT_LIST_DIR}/gtest/0001-Fix-warning-maybe-uninitialized.patch
     CMAKE_ARGS -DBUILD_GMOCK=OFF ${DEP_CMAKE_OPTS} -DCMAKE_INSTALL_PREFIX=${DESTDIR}/usr/local
 )
 

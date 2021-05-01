@@ -1,0 +1,31 @@
+From 4679637f1c9d5a0728bdc347a531737fad0b1ca3 Mon Sep 17 00:00:00 2001
+From: tbarbier <thomas.barbier@amadeus.com>
+Date: Thu, 24 Sep 2020 16:51:06 +0200
+Subject: [PATCH] Fix warning maybe-uninitialized
+
+---
+ googletest/src/gtest-death-test.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/googletest/src/gtest-death-test.cc b/googletest/src/gtest-death-test.cc
+index 31de7d627e..0764f2eb43 100644
+--- a/googletest/src/gtest-death-test.cc
++++ b/googletest/src/gtest-death-test.cc
+@@ -1281,7 +1281,7 @@ static void StackLowerThanAddress(const void* ptr,
+ GTEST_ATTRIBUTE_NO_SANITIZE_ADDRESS_
+ GTEST_ATTRIBUTE_NO_SANITIZE_HWADDRESS_
+ static void StackLowerThanAddress(const void* ptr, bool* result) {
+-  int dummy;
++  int dummy = 0;
+   *result = (&dummy < ptr);
+ }
+ 
+@@ -1289,7 +1289,7 @@ static void StackLowerThanAddress(const void* ptr, bool* result) {
+ GTEST_ATTRIBUTE_NO_SANITIZE_ADDRESS_
+ GTEST_ATTRIBUTE_NO_SANITIZE_HWADDRESS_
+ static bool StackGrowsDown() {
+-  int dummy;
++  int dummy = 0;
+   bool result;
+   StackLowerThanAddress(&dummy, &result);
+   return result;
