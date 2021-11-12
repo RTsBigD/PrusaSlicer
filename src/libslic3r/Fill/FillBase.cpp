@@ -154,7 +154,7 @@ std::pair<float, Point> Fill::_infill_direction(const Surface *surface) const
     } else {
 //    	printf("Layer_ID undefined!\n");
     }
-// Hier passiert der Wechsel indem immer 90° dazu gezählt werden
+// Hier passiert der Wechsel indem in jedem Schritt 90° dazu gezählt werden
     out_angle += float(M_PI/2.);
     return std::pair<float, Point>(out_angle, out_shift);
 }
