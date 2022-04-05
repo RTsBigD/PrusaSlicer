@@ -83,6 +83,10 @@ set(SLIC3R_SOURCES
     Fill/FillRectilinear.hpp
     Flow.cpp
     Flow.hpp
+    NonplanarFacet.cpp
+    NonplanarFacet.hpp
+    NonplanarSurface.cpp
+    NonplanarSurface.hpp
     format.hpp
     Format/3mf.cpp
     Format/3mf.hpp
