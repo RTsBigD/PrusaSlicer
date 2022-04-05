@@ -130,6 +130,12 @@
 %typemap{Layer*};
 %typemap{Ref<Layer>}{simple};
 
+%typemap{NonplanarFacet*};
+%typemap{Ref<NonplanarFacet>}{simple};
+
+%typemap{NonplanarSurface*};
+%typemap{Ref<NonplanarSurface>}{simple};
+
 %typemap{SupportLayer*};
 %typemap{Ref<SupportLayer>}{simple};
 
