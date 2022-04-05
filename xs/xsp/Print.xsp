@@ -14,11 +14,13 @@ _constant()
   ALIAS:
     STEP_SLICE              = posSlice
     STEP_PERIMETERS         = posPerimeters
+    STEP_DETECT_SURFACES    = posDetectSurfaces
     STEP_PREPARE_INFILL     = posPrepareInfill
     STEP_INFILL             = posInfill
     STEP_SUPPORTMATERIAL    = posSupportMaterial
     STEP_SKIRTBRIM          = psSkirtBrim
     STEP_WIPE_TOWER         = psWipeTower
+    STEP_NONPLANAR_PROJECTION = posNonplanarProjection
   PROTOTYPE:
   CODE:
     RETVAL = ix;
