@@ -38,22 +38,119 @@ _constant()
 %name{Slic3r::Print::Object} class PrintObject {
     // owned by Print, no constructor/destructor
 
+    void add_region_volume(int region_id, int volume_id);
+    std::vector<int> get_region_volumes(int region_id)
+        %code%{
+            if (0 <= region_id && region_id < THIS->region_volumes.size())
+                RETVAL = THIS->region_volumes[region_id];
+        %};
+    int region_count()
+        %code%{ RETVAL = THIS->print()->regions.size(); %};
+
     Ref<Print> print();
     Ref<ModelObject> model_object();
     Ref<StaticPrintConfig> config()
-        %code%{ RETVAL = &THIS->config(); %};
+        %code%{ RETVAL = &THIS->config; %};
+    Points copies();
+    t_layer_height_ranges layer_height_ranges()
+        %code%{ RETVAL = THIS->layer_height_ranges; %};
+    Ref<LayerHeightSpline> layer_height_spline()
+        %code%{ RETVAL = &THIS->layer_height_spline; %};
+    Ref<Point3> size()
+        %code%{ RETVAL = &THIS->size; %};
     Clone<BoundingBox> bounding_box();
-    
+    Ref<Point> _copies_shift()
+        %code%{ RETVAL = &THIS->_copies_shift; %};
+    std::vector<int> support_material_extruders()
+        %code%{
+            std::set<size_t> extruders = THIS->support_material_extruders();
+            RETVAL.reserve(extruders.size());
+            for (std::set<size_t>::const_iterator e = extruders.begin(); e != extruders.end(); ++e) {
+                RETVAL.push_back(*e);
+            }
+        %};
+    std::vector<int> extruders()
+        %code%{
+            std::set<size_t> extruders = THIS->extruders();
+            RETVAL.reserve(extruders.size());
+            for (std::set<size_t>::const_iterator e = extruders.begin(); e != extruders.end(); ++e) {
+                RETVAL.push_back(*e);
+            }
+        %};
+
+    bool typed_slices()
+        %code%{ RETVAL = THIS->typed_slices; %};
+    void set_typed_slices(bool value)
+        %code%{ THIS->typed_slices = value; %};
+
+    Points _shifted_copies()
+        %code%{ RETVAL = THIS->_shifted_copies; %};
+    void set_shifted_copies(Points value)
+        %code%{ THIS->_shifted_copies = value; %};
+
+    bool add_copy(Pointf* point)
+        %code%{ RETVAL = THIS->add_copy(*point); %};
+    bool delete_last_copy();
+    bool delete_all_copies();
+    bool set_copies(Points copies);
+    bool reload_model_instances();
+    void set_layer_height_ranges(t_layer_height_ranges layer_height_ranges)
+        %code%{ THIS->layer_height_ranges = layer_height_ranges; %};
+
+    size_t total_layer_count();
     size_t layer_count();
+    void clear_layers();
     Ref<Layer> get_layer(int idx);
+    Ref<Layer> add_layer(int id, coordf_t height, coordf_t print_z,
+        coordf_t slice_z);
+    void delete_layer(int idx);
 
     size_t support_layer_count();
+    void clear_support_layers();
     Ref<SupportLayer> get_support_layer(int idx);
+    Ref<SupportLayer> add_support_layer(int id, coordf_t height, coordf_t print_z);
+    void delete_support_layer(int idx);
 
+    bool invalidate_step(PrintObjectStep step);
+    bool invalidate_all_steps();
     bool step_done(PrintObjectStep step)
-        %code%{ RETVAL = THIS->is_step_done(step); %};
+        %code%{ RETVAL = THIS->state.is_done(step); %};
+    void set_step_done(PrintObjectStep step)
+        %code%{ THIS->state.set_done(step); %};
+    void set_step_started(PrintObjectStep step)
+        %code%{ THIS->state.set_started(step); %};
 
-    void slice();
+    %name{_detect_surfaces_type} void detect_surfaces_type();
+    void project_nonplanar_surfaces();
+    void debug_svg_print();
+    void move_nonplanar_surfaces_up();
+    void process_external_surfaces();
+    void bridge_over_infill();
+    void _slice();
+    SV* _slice_region(size_t region_id, std::vector<double> z, bool modifier)
+        %code%{
+            std::vector<float> z_f(z.begin(), z.end());
+            std::vector<ExPolygons> layers = THIS->_slice_region(region_id, z_f, modifier);
+            AV* layers_av = newAV();
+            size_t len = layers.size();
+            if (len > 0) av_extend(layers_av, len-1);
+            for (unsigned int i = 0; i < layers.size(); i++) {
+                AV* expolygons_av = newAV();
+                len = layers[i].size();
+                if (len > 0) av_extend(expolygons_av, len-1);
+                unsigned int j = 0;
+                for (ExPolygons::iterator it = layers[i].begin(); it != layers[i].end(); ++it) {
+                    av_store(expolygons_av, j++, perl_to_SV_clone_ref(*it));
+                }
+                av_store(layers_av, i, newRV_noinc((SV*)expolygons_av));
+            }
+            RETVAL = (SV*)newRV_noinc((SV*)layers_av);
+        %};
+    void _make_perimeters();
+    void _infill();
+
+    int ptr()
+        %code%{ RETVAL = (int)(intptr_t)THIS; %};
 };
 
 %name{Slic3r::Print} class Print {
