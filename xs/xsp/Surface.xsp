@@ -108,6 +108,8 @@ _constant()
     S_TYPE_INTERNALSOLID    = stInternalSolid
     S_TYPE_INTERNALBRIDGE   = stInternalBridge
     S_TYPE_INTERNALVOID     = stInternalVoid
+    S_TYPE_TOP_NONPLANAR             = stTopNonplanar
+    S_TYPE_INTERNALSOLID_NONPLANAR   = stInternalSolidNonplanar
     S_TYPW_PERIMETER        = stPerimeter
   PROTOTYPE:
   CODE:
