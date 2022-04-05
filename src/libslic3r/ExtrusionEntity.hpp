@@ -124,6 +124,8 @@ public:
     float width;
     // Height of the extrusion, used for visualization purposes.
     float height;
+    /// distance to surface layer in nonplanar extrusions -1.0 if not part of nonplanar extrusion
+    float distance_to_top = -1.0;
 
     ExtrusionPath(ExtrusionRole role) : mm3_per_mm(-1), width(-1), height(-1), m_role(role) {}
     ExtrusionPath(ExtrusionRole role, double mm3_per_mm, float width, float height) : mm3_per_mm(mm3_per_mm), width(width), height(height), m_role(role) {}
