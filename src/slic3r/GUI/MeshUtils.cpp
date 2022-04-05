@@ -6,7 +6,13 @@
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Model.hpp"
 
+#if ENABLE_LEGACY_OPENGL_REMOVAL
+#include "slic3r/GUI/GUI_App.hpp"
+#endif // ENABLE_LEGACY_OPENGL_REMOVAL
 #include "slic3r/GUI/Camera.hpp"
+#if ENABLE_GL_SHADERS_ATTRIBUTES
+#include "slic3r/GUI/Plater.hpp"
+#endif // ENABLE_GL_SHADERS_ATTRIBUTES
 
 #include <GL/glew.h>
 
@@ -64,15 +70,42 @@ void MeshClipper::set_transformation(const Geometry::Transformation& trafo)
     }
 }
 
-
-
+#if ENABLE_LEGACY_OPENGL_REMOVAL
+void MeshClipper::render_cut(const ColorRGBA& color)
+#else
 void MeshClipper::render_cut()
+#endif // ENABLE_LEGACY_OPENGL_REMOVAL
 {
     if (! m_triangles_valid)
         recalculate_triangles();
 
+#if ENABLE_LEGACY_OPENGL_REMOVAL
+    if (m_model.vertices_count() == 0 || m_model.indices_count() == 0)
+        return;
+
+    GLShaderProgram* curr_shader = wxGetApp().get_current_shader();
+    if (curr_shader != nullptr)
+        curr_shader->stop_using();
+
+    GLShaderProgram* shader = wxGetApp().get_shader("flat");
+    if (shader != nullptr) {
+        shader->start_using();
+#if ENABLE_GL_SHADERS_ATTRIBUTES
+        const Camera& camera = wxGetApp().plater()->get_camera();
+        shader->set_uniform("view_model_matrix", camera.get_view_matrix());
+        shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+#endif // ENABLE_GL_SHADERS_ATTRIBUTES
+        m_model.set_color(color);
+        m_model.render();
+        shader->stop_using();
+    }
+
+    if (curr_shader != nullptr)
+        curr_shader->start_using();
+#else
     if (m_vertex_array.has_VBOs())
         m_vertex_array.render();
+#endif // ENABLE_LEGACY_OPENGL_REMOVAL
 }
 
 
@@ -80,10 +113,9 @@ void MeshClipper::render_cut()
 void MeshClipper::recalculate_triangles()
 {
     const Transform3f& instance_matrix_no_translation_no_scaling = m_trafo.get_matrix(true,false,true).cast<float>();
-    const Vec3f& scaling = m_trafo.get_scaling_factor().cast<float>();
     // Calculate clipping plane normal in mesh coordinates.
     const Vec3f up_noscale = instance_matrix_no_translation_no_scaling.inverse() * m_plane.get_normal().cast<float>();
-    const Vec3d up (up_noscale(0)*scaling(0), up_noscale(1)*scaling(1), up_noscale(2)*scaling(2));
+    const Vec3d up = up_noscale.cast<double>().cwiseProduct(m_trafo.get_scaling_factor());
     // Calculate distance from mesh origin to the clipping plane (in mesh coordinates).
     const float height_mesh = m_plane.distance(m_trafo.get_offset()) * (up_noscale.norm()/up.norm());
 
@@ -162,6 +194,26 @@ void MeshClipper::recalculate_triangles()
 
     tr.pretranslate(0.001 * m_plane.get_normal().normalized()); // to avoid z-fighting
 
+#if ENABLE_LEGACY_OPENGL_REMOVAL
+    m_model.reset();
+
+    GLModel::Geometry init_data;
+    init_data.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3 };
+    init_data.reserve_vertices(m_triangles2d.size());
+    init_data.reserve_indices(m_triangles2d.size());
+
+    // vertices + indices
+    for (auto it = m_triangles2d.cbegin(); it != m_triangles2d.cend(); it = it + 3) {
+        init_data.add_vertex((Vec3f)(tr * Vec3d((*(it + 0)).x(), (*(it + 0)).y(), height_mesh)).cast<float>(), (Vec3f)up.cast<float>());
+        init_data.add_vertex((Vec3f)(tr * Vec3d((*(it + 1)).x(), (*(it + 1)).y(), height_mesh)).cast<float>(), (Vec3f)up.cast<float>());
+        init_data.add_vertex((Vec3f)(tr * Vec3d((*(it + 2)).x(), (*(it + 2)).y(), height_mesh)).cast<float>(), (Vec3f)up.cast<float>());
+        const size_t idx = it - m_triangles2d.cbegin();
+        init_data.add_triangle((unsigned int)idx, (unsigned int)idx + 1, (unsigned int)idx + 2);
+    }
+
+    if (!init_data.is_empty())
+        m_model.init_from(std::move(init_data));
+#else
     m_vertex_array.release_geometry();
     for (auto it=m_triangles2d.cbegin(); it != m_triangles2d.cend(); it=it+3) {
         m_vertex_array.push_geometry(tr * Vec3d((*(it+0))(0), (*(it+0))(1), height_mesh), up);
@@ -171,6 +223,7 @@ void MeshClipper::recalculate_triangles()
         m_vertex_array.push_triangle(idx, idx+1, idx+2);
     }
     m_vertex_array.finalize_geometry(true);
+#endif // ENABLE_LEGACY_OPENGL_REMOVAL
 
     m_triangles_valid = true;
 }
@@ -305,7 +358,13 @@ Vec3f MeshRaycaster::get_closest_point(const Vec3f& point, Vec3f* normal) const
     return closest_point.cast<float>();
 }
 
-
+int MeshRaycaster::get_closest_facet(const Vec3f &point) const
+{
+    int   facet_idx = 0;
+    Vec3d closest_point;
+    m_emesh.squared_distance(point.cast<double>(), facet_idx, closest_point);
+    return facet_idx;
+}
 
 } // namespace GUI
 } // namespace Slic3r

@@ -125,10 +125,8 @@ public:
     BoundingBoxf3 bounding_box() const;
     // Returns the bbox of this TriangleMesh transformed by the given transformation
     BoundingBoxf3 transformed_bounding_box(const Transform3d &trafo) const;
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
     // Variant returning the bbox of the part of this TriangleMesh above the given world_min_z
     BoundingBoxf3 transformed_bounding_box(const Transform3d& trafo, double world_min_z) const;
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
     // Return the size of the mesh in coordinates.
     Vec3d size() const { return m_stats.size.cast<double>(); }
     /// Return the center of the related bounding box.
@@ -228,6 +226,12 @@ bool its_is_splittable(const indexed_triangle_set &its, const std::vector<Vec3i>
 // Calculate number of unconnected face edges. There should be no unconnected edge in a manifold mesh.
 size_t its_num_open_edges(const indexed_triangle_set &its);
 size_t its_num_open_edges(const std::vector<Vec3i> &face_neighbors);
+
+#if ENABLE_SHOW_NON_MANIFOLD_EDGES
+// Calculate and returns the list of unconnected face edges.
+// Each edge is represented by the indices of the two endpoint vertices
+std::vector<std::pair<int, int>> its_get_open_edges(const indexed_triangle_set& its);
+#endif // ENABLE_SHOW_NON_MANIFOLD_EDGES
 
 // Shrink the vectors of its.vertices and its.faces to a minimum size by reallocating the two vectors.
 void its_shrink_to_fit(indexed_triangle_set &its);

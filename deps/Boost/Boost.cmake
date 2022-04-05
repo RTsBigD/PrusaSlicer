@@ -28,12 +28,17 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     elseif (MSVC_VERSION LESS 1930)
     # 1920-1929 = VS 16.0 (v142 toolset)
         set(_boost_toolset "msvc-14.2")
+    elseif (MSVC_VERSION LESS 1940)
+    # 1930-1939 = VS 17.0 (v143 toolset)
+        set(_boost_toolset "msvc-14.3")
     else ()
         message(FATAL_ERROR "Unsupported MSVC version")
     endif ()
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     if (WIN32)
         set(_boost_toolset "clang-win")
+    elseif (APPLE)
+        set(_boost_toolset "clang")
     else()
         set(_boost_toolset "clang")
     endif()
@@ -100,11 +105,16 @@ if (NOT _boost_variants)
     set(_boost_variants release)
 endif()
 
+set(_boost_layout system)
+if (MSVC)
+    set(_boost_layout versioned)
+endif ()
+
 set(_build_cmd ${_build_cmd}
                ${_boost_flags}
                -j${NPROC}
                ${_libs}
-               --layout=versioned
+               --layout=${_boost_layout}
                --debug-configuration
                toolset=${_boost_toolset}
                address-model=${_bits}
@@ -116,6 +126,12 @@ set(_build_cmd ${_build_cmd}
                stage)
 
 set(_install_cmd ${_build_cmd} --prefix=${_prefix} install)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # When Clang is used with enabled UndefinedBehaviorSanitizer, it produces "undefined reference to '__muloti4'" when __int128 is used.
+    # Because of that, UndefinedBehaviorSanitizer is disabled for those functions that use __int128.
+    list(APPEND _patch_command COMMAND ${PATCH_CMD} ${CMAKE_CURRENT_LIST_DIR}/Boost.patch)
+endif ()
 
 ExternalProject_Add(
     dep_Boost

@@ -260,6 +260,43 @@ wxBitmap* BitmapCache::load_png(const std::string &bitmap_name, unsigned width, 
     return this->insert(bitmap_key, wxImage_to_wxBitmap_with_alpha(std::move(image)));
 }
 
+NSVGimage* BitmapCache::nsvgParseFromFileWithReplace(const char* filename, const char* units, float dpi, const std::map<std::string, std::string>& replaces)
+{
+    std::string str;
+    FILE* fp = NULL;
+    size_t size;
+    char* data = NULL;
+    NSVGimage* image = NULL;
+
+    fp = boost::nowide::fopen(filename, "rb");
+    if (!fp) goto error;
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    data = (char*)malloc(size + 1);
+    if (data == NULL) goto error;
+    if (fread(data, 1, size, fp) != size) goto error;
+    data[size] = '\0';	// Must be null terminated.
+    fclose(fp);
+
+    if (replaces.empty())
+        image = nsvgParse(data, units, dpi);
+    else {
+        str.assign(data);
+        for (auto val : replaces)
+            boost::replace_all(str, val.first, val.second);
+        image = nsvgParse(str.data(), units, dpi);
+    }
+    free(data);
+    return image;
+
+error:
+    if (fp) fclose(fp);
+    if (data) free(data);
+    if (image) nsvgDelete(image);
+    return NULL;
+}
+
 wxBitmap* BitmapCache::load_svg(const std::string &bitmap_name, unsigned target_width, unsigned target_height, 
     const bool grayscale/* = false*/, const bool dark_mode/* = false*/, const std::string& new_color /*= ""*/)
 {
@@ -278,11 +315,11 @@ wxBitmap* BitmapCache::load_svg(const std::string &bitmap_name, unsigned target_
     // map of color replaces
     std::map<std::string, std::string> replaces;
     if (dark_mode)
-        replaces["#808080"] = "#FFFFFF";
+        replaces["\"#808080\""] = "\"#FFFFFF\"";
     if (!new_color.empty())
-        replaces["#ED6B21"] = new_color;
+        replaces["\"#ED6B21\""] = "\"" + new_color + "\"";
 
-    NSVGimage *image =  ::nsvgParseFromFileWithReplace(Slic3r::var(bitmap_name + ".svg").c_str(), "px", 96.0f, replaces);
+    NSVGimage *image =  nsvgParseFromFileWithReplace(Slic3r::var(bitmap_name + ".svg").c_str(), "px", 96.0f, replaces);
     if (image == nullptr)
         return nullptr;
 
@@ -356,22 +393,6 @@ wxBitmap BitmapCache::mksolid(size_t width, size_t height, unsigned char r, unsi
     }
 
     return wxImage_to_wxBitmap_with_alpha(std::move(image), scale);
-}
-
-bool BitmapCache::parse_color(const std::string& scolor, unsigned char* rgb_out)
-{
-    rgb_out[0] = rgb_out[1] = rgb_out[2] = 0;
-    if (scolor.size() != 7 || scolor.front() != '#')
-        return false;
-    const char* c = scolor.data() + 1;
-    for (size_t i = 0; i < 3; ++i) {
-        int digit1 = hex_digit_to_int(*c++);
-        int digit2 = hex_digit_to_int(*c++);
-        if (digit1 == -1 || digit2 == -1)
-            return false;
-        rgb_out[i] = (unsigned char)(digit1 * 16 + digit2);
-    }
-    return true;
 }
 
 } // namespace GUI

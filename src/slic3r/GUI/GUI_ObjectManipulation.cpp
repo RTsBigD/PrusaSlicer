@@ -495,7 +495,7 @@ void ObjectManipulation::update_ui_from_settings()
         // update colors for edit-boxes
         int axis_id = 0;
         for (ManipulationEditor* editor : m_editors) {
-//            editor->SetForegroundColour(m_use_colors ? wxColour(axes_color_text[axis_id]) : wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT));
+//            editor->SetForegroundColour(m_use_colors ? wxColour(axes_color_text[axis_id]) : wxGetApp().get_label_clr_default());
             if (m_use_colors) {
                 editor->SetBackgroundColour(wxColour(axes_color_back[axis_id]));
                 if (wxGetApp().dark_mode())
@@ -657,14 +657,10 @@ void ObjectManipulation::update_if_dirty()
     else
         m_og->disable();
 
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
-    if (!selection.is_dragging()) {
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
-    update_reset_buttons_visibility();
-    update_mirror_buttons_visibility();
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
+    if (!wxGetApp().plater()->canvas3D()->is_dragging()) {
+        update_reset_buttons_visibility();
+        update_mirror_buttons_visibility();
     }
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
 
     m_dirty = false;
 }
@@ -818,11 +814,8 @@ void ObjectManipulation::change_position_value(int axis, double value)
 
     auto canvas = wxGetApp().plater()->canvas3D();
     Selection& selection = canvas->get_selection();
-    selection.start_dragging();
+    selection.setup_cache();
     selection.translate(position - m_cache.position, selection.requires_local_axes());
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
-    selection.stop_dragging();
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
     canvas->do_move(L("Set Position"));
 
     m_cache.position = position;
@@ -850,13 +843,10 @@ void ObjectManipulation::change_rotation_value(int axis, double value)
 		transformation_type.set_local();
 	}
 
-    selection.start_dragging();
+    selection.setup_cache();
 	selection.rotate(
 		(M_PI / 180.0) * (transformation_type.absolute() ? rotation : rotation - m_cache.rotation), 
 		transformation_type);
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
-    selection.stop_dragging();
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
     canvas->do_rotate(L("Set Orientation"));
 
     m_cache.rotation = rotation;
@@ -933,11 +923,8 @@ void ObjectManipulation::do_scale(int axis, const Vec3d &scale) const
     if (m_uniform_scale || selection.requires_uniform_scale())
         scaling_factor = scale(axis) * Vec3d::Ones();
 
-    selection.start_dragging();
+    selection.setup_cache();
     selection.scale(scaling_factor, transformation_type);
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
-    selection.stop_dragging();
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
     wxGetApp().plater()->canvas3D()->do_scale(L("Set Scale"));
 }
 
@@ -1113,9 +1100,14 @@ ManipulationEditor::ManipulationEditor(ObjectManipulation* parent,
     {
         parent->set_focused_editor(nullptr);
 
+#if ENABLE_OBJECT_MANIPULATOR_FOCUS
+        // if the widgets exchanging focus are both manipulator fields, call kill_focus
+        if (dynamic_cast<ManipulationEditor*>(e.GetEventObject()) != nullptr && dynamic_cast<ManipulationEditor*>(e.GetWindow()) != nullptr)
+#else
         if (!m_enter_pressed)
+#endif // ENABLE_OBJECT_MANIPULATOR_FOCUS
             kill_focus(parent);
-        
+
         e.Skip();
     }, this->GetId());
 

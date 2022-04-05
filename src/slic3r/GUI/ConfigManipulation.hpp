@@ -21,8 +21,8 @@ class ConfigManipulation
 {
     bool                is_msg_dlg_already_exist{ false };
 
-    bool                m_support_material_overhangs_queried{false};
     bool                m_is_initialized_support_material_overhangs_queried{ false };
+    bool                m_support_material_overhangs_queried{ false };
 
     // function to loading of changed configuration 
     std::function<void()>                                       load_config = nullptr;
@@ -30,15 +30,18 @@ class ConfigManipulation
     // callback to propagation of changed value, if needed 
     std::function<void(const std::string&, const boost::any&)>  cb_value_change = nullptr;
     ModelConfig* local_config = nullptr;
+    wxWindow*    m_msg_dlg_parent {nullptr};
 
 public:
     ConfigManipulation(std::function<void()> load_config,
         std::function<void(const std::string&, bool toggle, int opt_index)> cb_toggle_field,
         std::function<void(const std::string&, const boost::any&)>  cb_value_change,
-        ModelConfig* local_config = nullptr) :
+        ModelConfig* local_config = nullptr,
+        wxWindow* msg_dlg_parent  = nullptr) :
         load_config(load_config),
         cb_toggle_field(cb_toggle_field),
         cb_value_change(cb_value_change),
+        m_msg_dlg_parent(msg_dlg_parent),
         local_config(local_config) {}
     ConfigManipulation() {}
 

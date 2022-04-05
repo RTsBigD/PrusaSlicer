@@ -239,6 +239,8 @@ ObjectList::ObjectList(wxWindow* parent) :
 
 ObjectList::~ObjectList()
 {
+    if (m_objects_model)
+        m_objects_model->DecRef();
 }
 
 void ObjectList::set_min_height()
@@ -349,7 +351,8 @@ void ObjectList::get_selection_indexes(std::vector<int>& obj_idxs, std::vector<i
 {
     wxDataViewItemArray sels;
     GetSelections(sels);
-    assert(!sels.IsEmpty());
+    if (sels.IsEmpty())
+        return;
 
     if ( m_objects_model->GetItemType(sels[0]) & itVolume || 
         (sels.Count()==1 && m_objects_model->GetItemType(m_objects_model->GetParent(sels[0])) & itVolume) ) {
@@ -419,12 +422,12 @@ MeshErrorsInfo ObjectList::get_mesh_errors_info(const int obj_idx, const int vol
         if (repaired.facets_reversed > 0)
             tooltip += "\t" + format_wxstr(_L_PLURAL("%1$d facet reversed", "%1$d facets reversed", repaired.facets_reversed), repaired.facets_reversed) + "\n";
         if (repaired.backwards_edges > 0)
-            tooltip += "\t" + format_wxstr(_L_PLURAL("%1$d backwards edge", "%1$d backwards edges", repaired.backwards_edges), repaired.backwards_edges) + "\n";
+            tooltip += "\t" + format_wxstr(_L_PLURAL("%1$d backward edge", "%1$d backward edges", repaired.backwards_edges), repaired.backwards_edges) + "\n";
     }
     if (!stats.manifold()) {
         remaining_info = format_wxstr(_L_PLURAL("%1$d open edge", "%1$d open edges", stats.open_edges), stats.open_edges);
 
-        tooltip += _L("Remaning errors") + ":\n";
+        tooltip += _L("Remaining errors") + ":\n";
         tooltip += "\t" + format_wxstr(_L_PLURAL("%1$d open edge", "%1$d open edges", stats.open_edges), stats.open_edges) + "\n";
     }
 
@@ -818,7 +821,7 @@ void ObjectList::paste_objects_into_list(const std::vector<size_t>& object_idxs)
     wxDataViewItemArray items;
     for (const size_t object : object_idxs)
     {
-        add_object_to_list(object);
+        add_object_to_list(object, false);
         items.Add(m_objects_model->GetItemById(object));
     }
 
@@ -911,21 +914,14 @@ void ObjectList::list_manipulation(const wxPoint& mouse_pos, bool evt_context_me
 	        toggle_printable_state();
 	    else if (title == _("Editing"))
 	        show_context_menu(evt_context_menu);
-	    else if (title == _("Name"))
-	    {
-	        if (wxOSX)
-	            show_context_menu(evt_context_menu); // return context menu under OSX (related to #2909)
-
-	        if (is_windows10())
-	        {
-	            int obj_idx, vol_idx;
-	            get_selected_item_indexes(obj_idx, vol_idx, item);
-
-	            if (m_objects_model->HasWarningIcon(item) &&
-	                mouse_pos.x > 2 * wxGetApp().em_unit() && mouse_pos.x < 4 * wxGetApp().em_unit())
-	                fix_through_netfabb();
-	        }
-	    }
+        else if (title == _("Name"))
+        {
+            if (is_windows10() && m_objects_model->HasWarningIcon(item) &&
+                mouse_pos.x > 2 * wxGetApp().em_unit() && mouse_pos.x < 4 * wxGetApp().em_unit())
+                fix_through_netfabb();
+            else if (evt_context_menu)
+                show_context_menu(evt_context_menu); // show context menu for "Name" column too
+        }
 	    // workaround for extruder editing under OSX 
 	    else if (wxOSX && evt_context_menu && title == _("Extruder"))
 	        extruder_editing();
@@ -1404,18 +1400,30 @@ void ObjectList::load_subobject(ModelVolumeType type, bool from_galery/* = false
     if (m_objects_model->GetItemType(item)&itInstance)
         item = m_objects_model->GetItemById(obj_idx);
 
+    wxArrayString input_files;
+    if (from_galery) {
+        GalleryDialog dlg(this);
+        if (dlg.ShowModal() != wxID_CLOSE)
+            dlg.get_input_files(input_files);
+    }
+    else
+        wxGetApp().import_model(wxGetApp().tab_panel()->GetPage(0), input_files);
+
+    if (input_files.IsEmpty())
+        return;
+
+    take_snapshot((type == ModelVolumeType::MODEL_PART) ? _L("Load Part") : _L("Load Modifier"));
+
     std::vector<ModelVolume*> volumes;
     // ! ysFIXME - delete commented code after testing and rename "load_modifier" to something common
     /*
     if (type == ModelVolumeType::MODEL_PART)
         load_part(*(*m_objects)[obj_idx], volumes, type, from_galery);
     else*/
-        load_modifier(*(*m_objects)[obj_idx], volumes, type, from_galery);
+        load_modifier(input_files, *(*m_objects)[obj_idx], volumes, type, from_galery);
 
     if (volumes.empty())
         return;
-
-    take_snapshot((type == ModelVolumeType::MODEL_PART) ? _L("Load Part") : _L("Load Modifier"));
 
     wxDataViewItemArray items = reorder_volumes_and_get_selection(obj_idx, [volumes](const ModelVolume* volume) {
         return std::find(volumes.begin(), volumes.end(), volume) != volumes.end(); });
@@ -1453,7 +1461,7 @@ void ObjectList::load_part(ModelObject& model_object, std::vector<ModelVolume*>&
     else
         wxGetApp().import_model(parent, input_files);
 
-    wxProgressDialog dlg(_L("Loading") + dots, "", 100, wxGetApp().plater(), wxPD_AUTO_HIDE);
+    wxProgressDialog dlg(_L("Loading") + dots, "", 100, wxGetApp().mainframe wxPD_AUTO_HIDE);
     wxBusyCursor busy;
 
     for (size_t i = 0; i < input_files.size(); ++i) {
@@ -1492,7 +1500,7 @@ void ObjectList::load_part(ModelObject& model_object, std::vector<ModelVolume*>&
     }
 }
 */
-void ObjectList::load_modifier(ModelObject& model_object, std::vector<ModelVolume*>& added_volumes, ModelVolumeType type, bool from_galery)
+void ObjectList::load_modifier(const wxArrayString& input_files, ModelObject& model_object, std::vector<ModelVolume*>& added_volumes, ModelVolumeType type, bool from_galery)
 {
     // ! ysFIXME - delete commented code after testing and rename "load_modifier" to something common
     //if (type == ModelVolumeType::MODEL_PART)
@@ -1500,20 +1508,7 @@ void ObjectList::load_modifier(ModelObject& model_object, std::vector<ModelVolum
 
     wxWindow* parent = wxGetApp().tab_panel()->GetPage(0);
 
-    wxArrayString input_files;
-
-    if (from_galery) {
-        GalleryDialog dlg(this);
-        if (dlg.ShowModal() == wxID_CLOSE)
-            return;
-        dlg.get_input_files(input_files);
-        if (input_files.IsEmpty())
-            return;
-    }
-    else
-        wxGetApp().import_model(parent, input_files);
-
-    wxProgressDialog dlg(_L("Loading") + dots, "", 100, wxGetApp().plater(), wxPD_AUTO_HIDE);
+    wxProgressDialog dlg(_L("Loading") + dots, "", 100, wxGetApp().mainframe, wxPD_AUTO_HIDE);
     wxBusyCursor busy;
 
     const int obj_idx = get_selected_obj_idx();
@@ -1563,7 +1558,7 @@ void ObjectList::load_modifier(ModelObject& model_object, std::vector<ModelVolum
             for (auto object : model.objects) {
                 if (model_object.origin_translation != Vec3d::Zero()) {
                     object->center_around_origin();
-                    Vec3d delta = model_object.origin_translation - object->origin_translation;
+                    const Vec3d delta = model_object.origin_translation - object->origin_translation;
                     for (auto volume : object->volumes) {
                         volume->translate(delta);
                     }
@@ -1577,6 +1572,12 @@ void ObjectList::load_modifier(ModelObject& model_object, std::vector<ModelVolum
         new_volume->name = boost::filesystem::path(input_file).filename().string();
         // set a default extruder value, since user can't add it manually
         new_volume->config.set_key_value("extruder", new ConfigOptionInt(0));
+        // update source data
+        new_volume->source.input_file = input_file;
+        new_volume->source.object_idx = obj_idx;
+        new_volume->source.volume_idx = int(model_object.volumes.size()) - 1;
+        if (model.objects.size() == 1 && model.objects.front()->volumes.size() == 1)
+            new_volume->source.mesh_offset = model.objects.front()->volumes.front()->source.mesh_offset;
 
         if (from_galery) {
             // Transform the new modifier to be aligned with the print bed.
@@ -1690,16 +1691,16 @@ void ObjectList::load_shape_object(const std::string& type_name)
     if (selection.get_object_idx() != -1)
         return;
 
-    const int obj_idx = m_objects->size();
-    if (obj_idx < 0)
-        return;
-
     take_snapshot(_L("Add Shape"));
 
     // Create mesh
     BoundingBoxf3 bb;
     TriangleMesh mesh = create_mesh(type_name, bb);
     load_mesh_object(mesh, _L("Shape") + "-" + _(type_name));
+#if ENABLE_RELOAD_FROM_DISK_REWORK
+    if (!m_objects->empty())
+        m_objects->back()->volumes.front()->source.is_from_builtin_objects = true;
+#endif // ENABLE_RELOAD_FROM_DISK_REWORK
     wxGetApp().mainframe->update_title();
 }
 
@@ -1758,12 +1759,9 @@ void ObjectList::load_mesh_object(const TriangleMesh &mesh, const wxString &name
     new_object->invalidate_bounding_box();
     new_object->translate(-bb.center());
 
-    if (center) {
-        const BoundingBoxf bed_shape = wxGetApp().plater()->bed_shape_bb();
-        new_object->instances[0]->set_offset(Slic3r::to_3d(bed_shape.center().cast<double>(), -new_object->origin_translation.z()));
-    } else {
-        new_object->instances[0]->set_offset(bb.center());
-    }
+    new_object->instances[0]->set_offset(center ? 
+        to_3d(wxGetApp().plater()->build_volume().bounding_volume2d().center(), -new_object->origin_translation.z()) :
+        bb.center());
 
     new_object->ensure_on_bed();
 
@@ -1935,9 +1933,15 @@ void ObjectList::del_layers_from_object(const int obj_idx)
 bool ObjectList::del_subobject_from_object(const int obj_idx, const int idx, const int type)
 {
     assert(idx >= 0);
-	if (obj_idx == 1000 || idx<0)
+#if ENABLE_WIPETOWER_OBJECTID_1000_REMOVAL
+    if (m_objects->empty() || int(m_objects->size()) <= obj_idx)
+        // Cannot delete a wipe tower
+        return false;
+#else
+    if (obj_idx == 1000 || idx<0)
 		// Cannot delete a wipe tower or volume with negative id
 		return false;
+#endif // ENABLE_WIPETOWER_OBJECTID_1000_REMOVAL
 
     ModelObject* object = (*m_objects)[obj_idx];
 
@@ -4026,18 +4030,8 @@ void ObjectList::rename_item()
     if (new_name.IsEmpty())
         return;
 
-    bool is_unusable_symbol = false;
-    std::string chosen_name = Slic3r::normalize_utf8_nfc(new_name.ToUTF8());
-    const char* unusable_symbols = "<>:/\\|?*\"";
-    for (size_t i = 0; i < std::strlen(unusable_symbols); i++) {
-        if (chosen_name.find_first_of(unusable_symbols[i]) != std::string::npos) {
-            is_unusable_symbol = true;
-        }
-    }
-
-    if (is_unusable_symbol) {
-        show_error(this, _(L("The supplied name is not valid;")) + "\n" +
-            _(L("the following characters are not allowed:")) + " <>:/\\|?*\"");
+    if (Plater::has_illegal_filename_characters(new_name)) {
+        Plater::show_illegal_characters_warning(this);
         return;
     }
 
@@ -4125,7 +4119,7 @@ void ObjectList::fix_through_netfabb()
     Plater::TakeSnapshot snapshot(plater, _L("Fix through NetFabb"));
 
     // Open a progress dialog.
-    wxProgressDialog progress_dlg(_L("Fixing through NetFabb"), "", 100, plater,
+    wxProgressDialog progress_dlg(_L("Fixing through NetFabb"), "", 100, find_toplevel_parent(plater),
                                     wxPD_AUTO_HIDE | wxPD_APP_MODAL | wxPD_CAN_ABORT);
     int model_idx{ 0 };
     if (vol_idxs.empty()) {
@@ -4155,7 +4149,7 @@ void ObjectList::fix_through_netfabb()
     wxString msg;
     wxString bullet_suf = "\n   - ";
     if (!succes_models.empty()) {
-        msg = _L_PLURAL("Folowing model is repaired successfully", "Folowing models are repaired successfully", succes_models.size()) + ":";
+        msg = _L_PLURAL("The following model was repaired successfully", "The following models were repaired successfully", succes_models.size()) + ":";
         for (auto& model : succes_models)
             msg += bullet_suf + from_u8(model);
         msg += "\n\n";
@@ -4257,10 +4251,7 @@ void ObjectList::OnEditingDone(wxDataViewEvent &event)
     const auto renderer = dynamic_cast<BitmapTextRenderer*>(GetColumn(colName)->GetRenderer());
 
     if (renderer->WasCanceled())
-		wxTheApp->CallAfter([this]{
-			show_error(this, _(L("The supplied name is not valid;")) + "\n" +
-				             _(L("the following characters are not allowed:")) + " <>:/\\|?*\"");
-		});
+		wxTheApp->CallAfter([this]{ Plater::show_illegal_characters_warning(this); });
 
 #ifdef __WXMSW__
 	// Workaround for entering the column editing mode on Windows. Simulate keyboard enter when another column of the active line is selected.

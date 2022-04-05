@@ -62,19 +62,23 @@ public:
 class TriangleSelectorMmGui : public TriangleSelectorGUI {
 public:
     // Plus 1 in the initialization of m_gizmo_scene is because the first position is allocated for non-painted triangles, and the indices above colors.size() are allocated for seed fill.
-    explicit TriangleSelectorMmGui(const TriangleMesh &mesh, const std::vector<std::array<float, 4>> &colors, const std::array<float, 4> &default_volume_color)
+    TriangleSelectorMmGui(const TriangleMesh& mesh, const std::vector<ColorRGBA>& colors, const ColorRGBA& default_volume_color)
         : TriangleSelectorGUI(mesh), m_colors(colors), m_default_volume_color(default_volume_color), m_gizmo_scene(2 * (colors.size() + 1)) {}
     ~TriangleSelectorMmGui() override = default;
 
+#if ENABLE_GL_SHADERS_ATTRIBUTES
+    void render(ImGuiWrapper* imgui, const Transform3d& matrix) override;
+#else
     // Render current selection. Transformation matrices are supposed
     // to be already set.
     void render(ImGuiWrapper* imgui) override;
+#endif // ENABLE_GL_SHADERS_ATTRIBUTES
 
 private:
     void update_render_data();
 
-    const std::vector<std::array<float, 4>> &m_colors;
-    const std::array<float, 4>               m_default_volume_color;
+    const std::vector<ColorRGBA>&            m_colors;
+    const ColorRGBA                          m_default_volume_color;
     GLMmSegmentationGizmo3DScene             m_gizmo_scene;
 };
 
@@ -85,9 +89,9 @@ public:
         : GLGizmoPainterBase(parent, icon_filename, sprite_id) {}
     ~GLGizmoMmuSegmentation() override = default;
 
-    void render_painter_gizmo() const override;
+    void render_painter_gizmo() override;
 
-    void set_painter_gizmo_data(const Selection& selection) override;
+    void data_changed() override;
 
     void render_triangles(const Selection& selection) const override;
 
@@ -97,9 +101,11 @@ public:
     // will be also extended to support additional states, requiring at least one state to remain free out of 19 states.
     static const constexpr size_t EXTRUDERS_LIMIT = 16;
 
+    const float get_cursor_radius_min() const override { return CursorRadiusMin; }
+
 protected:
-    std::array<float, 4> get_cursor_sphere_left_button_color() const override;
-    std::array<float, 4> get_cursor_sphere_right_button_color() const override;
+    ColorRGBA get_cursor_sphere_left_button_color() const override;
+    ColorRGBA get_cursor_sphere_right_button_color() const override;
 
     EnforcerBlockerType get_left_button_state_type() const override { return EnforcerBlockerType(m_first_selected_extruder_idx + 1); }
     EnforcerBlockerType get_right_button_state_type() const override { return EnforcerBlockerType(m_second_selected_extruder_idx + 1); }
@@ -111,14 +117,19 @@ protected:
     bool on_is_activable() const override;
 
     wxString handle_snapshot_action_name(bool shift_down, Button button_down) const override;
+
+    std::string get_gizmo_entering_text() const override { return _u8L("Entering Multimaterial painting"); }
+    std::string get_gizmo_leaving_text() const override { return _u8L("Leaving Multimaterial painting"); }
     std::string get_action_snapshot_name() override { return _u8L("Multimaterial painting editing"); }
 
     size_t                            m_first_selected_extruder_idx  = 0;
     size_t                            m_second_selected_extruder_idx = 1;
     std::vector<std::string>          m_original_extruders_names;
-    std::vector<std::array<float, 4>> m_original_extruders_colors;
-    std::vector<std::array<float, 4>> m_modified_extruders_colors;
+    std::vector<ColorRGBA>            m_original_extruders_colors;
+    std::vector<ColorRGBA>            m_modified_extruders_colors;
     std::vector<int>                  m_original_volumes_extruder_idxs;
+
+    static const constexpr float      CursorRadiusMin = 0.1f; // cannot be zero
 
 private:
     bool on_init() override;

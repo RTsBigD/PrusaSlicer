@@ -11,13 +11,16 @@ public:
     GLGizmoFdmSupports(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id)
         : GLGizmoPainterBase(parent, icon_filename, sprite_id) {}
 
-    void render_painter_gizmo() const override;
+    void render_painter_gizmo() override;
 
 protected:
     void on_render_input_window(float x, float y, float bottom_limit) override;
     std::string on_get_name() const override;
 
     wxString handle_snapshot_action_name(bool shift_down, Button button_down) const override;
+
+    std::string get_gizmo_entering_text() const override { return _u8L("Entering Paint-on supports"); }
+    std::string get_gizmo_leaving_text() const override { return _u8L("Leaving Paint-on supports"); }
     std::string get_action_snapshot_name() override { return _u8L("Paint-on supports editing"); }
 
 
