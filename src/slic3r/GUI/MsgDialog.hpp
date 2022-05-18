@@ -30,7 +30,7 @@ struct MsgDialog : wxDialog
 	MsgDialog &operator=(const MsgDialog &) = delete;
 	virtual ~MsgDialog() = default;
 
-	// TODO: refactor with CreateStdDialogButtonSizer usage
+	void SetButtonLabel(wxWindowID btn_id, const wxString& label, bool set_focus = false);
 
 protected:
 	enum {
@@ -89,6 +89,8 @@ public:
 	virtual ~WarningDialog() = default;
 };
 
+wxString get_wraped_wxString(const wxString& text_in, size_t line_len = 80);
+
 #ifdef _WIN32
 // Generic static line, used intead of wxStaticLine
 class StaticLine: public wxTextCtrl
@@ -111,6 +113,7 @@ public:
 class MessageDialog : public MsgDialog
 {
 public:
+	// NOTE! Don't change a signature of contsrucor. It have to  be tha same as for wxMessageDialog
 	MessageDialog(	wxWindow *parent,
 		            const wxString& message,
 		            const wxString& caption = wxEmptyString,
@@ -130,6 +133,7 @@ class RichMessageDialog : public MsgDialog
 	bool		m_checkBoxValue{ false };
 
 public:
+	// NOTE! Don't change a signature of contsrucor. It have to  be tha same as for wxRichMessageDialog
 	RichMessageDialog(	wxWindow *parent,
 						const wxString& message,
 						const wxString& caption = wxEmptyString,
@@ -156,8 +160,8 @@ public:
 	// customization of the message box buttons
 	virtual bool SetYesNoLabels(const wxMD::ButtonLabel& yes, const wxMD::ButtonLabel& no)
 	{
-		DoSetCustomLabel(m_yes, yes);
-		DoSetCustomLabel(m_no, no);
+		DoSetCustomLabel(m_yes, yes, wxID_YES);
+		DoSetCustomLabel(m_no, no, wxID_NO);
 		return true;
 	}
 
@@ -165,29 +169,29 @@ public:
 		const wxMD::ButtonLabel& no,
 		const wxMD::ButtonLabel& cancel)
 	{
-		DoSetCustomLabel(m_yes, yes);
-		DoSetCustomLabel(m_no, no);
-		DoSetCustomLabel(m_cancel, cancel);
+		DoSetCustomLabel(m_yes, yes, wxID_YES);
+		DoSetCustomLabel(m_no, no, wxID_NO);
+		DoSetCustomLabel(m_cancel, cancel, wxID_CANCEL);
 		return true;
 	}
 
 	virtual bool SetOKLabel(const wxMD::ButtonLabel& ok)
 	{
-		DoSetCustomLabel(m_ok, ok);
+		DoSetCustomLabel(m_ok, ok, wxID_OK);
 		return true;
 }
 
 	virtual bool SetOKCancelLabels(const wxMD::ButtonLabel& ok,
 		const wxMD::ButtonLabel& cancel)
 	{
-		DoSetCustomLabel(m_ok, ok);
-		DoSetCustomLabel(m_cancel, cancel);
+		DoSetCustomLabel(m_ok, ok, wxID_OK);
+		DoSetCustomLabel(m_cancel, cancel, wxID_CANCEL);
 		return true;
 	}
 
 	virtual bool SetHelpLabel(const wxMD::ButtonLabel& help)
 	{
-		DoSetCustomLabel(m_help, help);
+		DoSetCustomLabel(m_help, help, wxID_HELP);
 		return true;
 	}
 	// test if any custom labels were set
@@ -226,9 +230,10 @@ protected:
 	// the value to var with possibly some transformation (e.g. Cocoa version
 	// currently uses this to remove any accelerators from the button strings
 	// while GTK+ one handles stock items specifically here)
-	void DoSetCustomLabel(wxString& var, const wxMD::ButtonLabel& label)
+	void DoSetCustomLabel(wxString& var, const wxMD::ButtonLabel& label, wxWindowID btn_id)
 	{
 		var = label.GetAsString();
+		SetButtonLabel(btn_id, var);
 	}
 
 	// these functions return the custom label or empty string and should be
@@ -281,7 +286,7 @@ public:
 		const wxString& message,
 		const wxString& caption = wxEmptyString,
 		long style = wxOK)
-    : wxMessageDialog(parent, message, caption, style) {}
+    : wxMessageDialog(parent, get_wraped_wxString(message), caption, style) {}
 	~MessageDialog() {}
 };
 
@@ -293,7 +298,9 @@ public:
 		const wxString& message,
 		const wxString& caption = wxEmptyString,
 		long style = wxOK)
-    : wxRichMessageDialog(parent, message, caption, style) {}
+    : wxRichMessageDialog(parent, get_wraped_wxString(message), caption, style) {
+		this->SetEscapeId(wxID_CANCEL);
+	}
 	~RichMessageDialog() {}
 };
 #endif
@@ -302,7 +309,7 @@ public:
 class InfoDialog : public MsgDialog
 {
 public:
-	InfoDialog(wxWindow *parent, const wxString &title, const wxString &msg);
+	InfoDialog(wxWindow *parent, const wxString &title, const wxString &msg, bool is_marked = false, long style = wxOK| wxICON_INFORMATION);
 	InfoDialog(InfoDialog&&) = delete;
 	InfoDialog(const InfoDialog&) = delete;
 	InfoDialog&operator=(InfoDialog&&) = delete;

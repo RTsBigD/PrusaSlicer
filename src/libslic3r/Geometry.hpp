@@ -72,32 +72,6 @@ static inline bool is_ccw(const Polygon &poly)
     return o == ORIENTATION_CCW;
 }
 
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
-// returns true if the given polygons are identical
-static inline bool are_approx(const Polygon& lhs, const Polygon& rhs)
-{
-    if (lhs.points.size() != rhs.points.size())
-        return false;
-
-    size_t rhs_id = 0;
-    while (rhs_id < rhs.points.size()) {
-        if (rhs.points[rhs_id].isApprox(lhs.points.front()))
-            break;
-        ++rhs_id;
-    }
-
-    if (rhs_id == rhs.points.size())
-        return false;
-
-    for (size_t i = 0; i < lhs.points.size(); ++i) {
-        if (!lhs.points[i].isApprox(rhs.points[(i + rhs_id) % lhs.points.size()]))
-            return false;
-    }
-
-    return true;
-}
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
-
 inline bool ray_ray_intersection(const Vec2d &p1, const Vec2d &v1, const Vec2d &p2, const Vec2d &v2, Vec2d &res)
 {
     double denom = v1(0) * v2(1) - v2(0) * v1(1);
@@ -313,14 +287,8 @@ bool liang_barsky_line_clipping(
 	return liang_barsky_line_clipping(x0clip, x1clip, bbox);
 }
 
-Pointf3s convex_hull(Pointf3s points);
-Polygon convex_hull(Points points);
-Polygon convex_hull(const Polygons &polygons);
-
 bool directions_parallel(double angle1, double angle2, double max_diff = 0);
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
 bool directions_perpendicular(double angle1, double angle2, double max_diff = 0);
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
 template<class T> bool contains(const std::vector<T> &vector, const Point &point);
 template<typename T> T rad2deg(T angle) { return T(180.0) * angle / T(PI); }
 double rad2deg_dir(double angle);
@@ -379,25 +347,23 @@ class Transformation
 {
     struct Flags
     {
-        bool dont_translate;
-        bool dont_rotate;
-        bool dont_scale;
-        bool dont_mirror;
-
-        Flags();
+        bool dont_translate{ true };
+        bool dont_rotate{ true };
+        bool dont_scale{ true };
+        bool dont_mirror{ true };
 
         bool needs_update(bool dont_translate, bool dont_rotate, bool dont_scale, bool dont_mirror) const;
         void set(bool dont_translate, bool dont_rotate, bool dont_scale, bool dont_mirror);
     };
 
-    Vec3d m_offset;              // In unscaled coordinates
-    Vec3d m_rotation;            // Rotation around the three axes, in radians around mesh center point
-    Vec3d m_scaling_factor;      // Scaling factors along the three axes
-    Vec3d m_mirror;              // Mirroring along the three axes
+    Vec3d m_offset{ Vec3d::Zero() };              // In unscaled coordinates
+    Vec3d m_rotation{ Vec3d::Zero() };            // Rotation around the three axes, in radians around mesh center point
+    Vec3d m_scaling_factor{ Vec3d::Ones() };      // Scaling factors along the three axes
+    Vec3d m_mirror{ Vec3d::Ones() };              // Mirroring along the three axes
 
-    mutable Transform3d m_matrix;
+    mutable Transform3d m_matrix{ Transform3d::Identity() };
     mutable Flags m_flags;
-    mutable bool m_dirty;
+    mutable bool m_dirty{ false };
 
 public:
     Transformation();
@@ -467,7 +433,7 @@ extern double rotation_diff_z(const Vec3d &rot_xyz_from, const Vec3d &rot_xyz_to
 // Is the angle close to a multiple of 90 degrees?
 inline bool is_rotation_ninety_degrees(double a)
 {
-    a = fmod(std::abs(a), 0.5 * M_PI);
+    a = fmod(std::abs(a), 0.5 * PI);
     if (a > 0.25 * PI)
         a = 0.5 * PI - a;
     return a < 0.001;
@@ -478,10 +444,6 @@ inline bool is_rotation_ninety_degrees(const Vec3d &rotation)
 {
     return is_rotation_ninety_degrees(rotation.x()) && is_rotation_ninety_degrees(rotation.y()) && is_rotation_ninety_degrees(rotation.z());
 }
-
-// Returns true if the intersection of the two convex polygons A and B
-// is not an empty set.
-bool convex_polygons_intersect(const Polygon &A, const Polygon &B);
 
 } } // namespace Slicer::Geometry
 

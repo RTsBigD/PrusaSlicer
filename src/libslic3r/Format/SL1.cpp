@@ -19,10 +19,14 @@
 #include "libslic3r/SLA/RasterBase.hpp"
 #include "libslic3r/miniz_extension.hpp"
 #include "libslic3r/PNGReadWrite.hpp"
+#include "libslic3r/LocalesUtils.hpp"
+#include "libslic3r/GCode/ThumbnailData.hpp"
 
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/algorithm/string.hpp>
+
+#include <miniz.h>
 
 namespace marchsq {
 
@@ -321,11 +325,13 @@ ConfigSubstitutions import_sla_archive(
             lh_opt != arch.config.not_found())
         {
             auto lh_str = lh_opt->second.data();
-            try {
-                double lh = std::stod(lh_str); // TODO replace with std::from_chars
+
+            size_t pos;
+            double lh = string_to_double_decimal_point(lh_str, &pos);
+            if (pos) { // TODO: verify that pos is 0 when parsing fails
                 profile_out.set("layer_height", lh);
                 profile_out.set("initial_layer_height", lh);
-            } catch(...) {}
+            }
         }
     }
 
@@ -379,6 +385,7 @@ void fill_iniconf(ConfMap &m, const SLAPrint &print)
     m["layerHeight"]    = get_cfg_value(cfg, "layer_height");
     m["expTime"]        = get_cfg_value(cfg, "exposure_time");
     m["expTimeFirst"]   = get_cfg_value(cfg, "initial_exposure_time");
+    m["expUserProfile"] = get_cfg_value(cfg, "material_print_speed") == "slow" ? "1" : "0";
     m["materialName"]   = get_cfg_value(cfg, "sla_material_settings_id");
     m["printerModel"]   = get_cfg_value(cfg, "printer_model");
     m["printerVariant"] = get_cfg_value(cfg, "printer_variant");
@@ -442,8 +449,8 @@ void fill_slicerconf(ConfMap &m, const SLAPrint &print)
 
 std::unique_ptr<sla::RasterBase> SL1Archive::create_raster() const
 {
-    sla::RasterBase::Resolution res;
-    sla::RasterBase::PixelDim   pxdim;
+    sla::Resolution res;
+    sla::PixelDim   pxdim;
     std::array<bool, 2>         mirror;
 
     double w  = m_cfg.display_width.getFloat();
@@ -464,8 +471,8 @@ std::unique_ptr<sla::RasterBase> SL1Archive::create_raster() const
         std::swap(pw, ph);
     }
 
-    res   = sla::RasterBase::Resolution{pw, ph};
-    pxdim = sla::RasterBase::PixelDim{w / pw, h / ph};
+    res   = sla::Resolution{pw, ph};
+    pxdim = sla::PixelDim{w / pw, h / ph};
     sla::RasterBase::Trafo tr{orientation, mirror};
 
     double gamma = m_cfg.gamma_correction.getFloat();
@@ -478,10 +485,31 @@ sla::RasterEncoder SL1Archive::get_encoder() const
     return sla::PNGRasterEncoder{};
 }
 
-void SL1Archive::export_print(Zipper& zipper,
-                              const SLAPrint &print,
-                              const std::string &prjname)
+static void write_thumbnail(Zipper &zipper, const ThumbnailData &data)
 {
+    size_t png_size = 0;
+
+    void  *png_data = tdefl_write_image_to_png_file_in_memory_ex(
+         (const void *) data.pixels.data(), data.width, data.height, 4,
+         &png_size, MZ_DEFAULT_LEVEL, 1);
+
+    if (png_data != nullptr) {
+        zipper.add_entry("thumbnail/thumbnail" + std::to_string(data.width) +
+                             "x" + std::to_string(data.height) + ".png",
+                         static_cast<const std::uint8_t *>(png_data),
+                         png_size);
+
+        mz_free(png_data);
+    }
+}
+
+void SL1Archive::export_print(const std::string     fname,
+                              const SLAPrint       &print,
+                              const ThumbnailsList &thumbnails,
+                              const std::string    &prjname)
+{
+    Zipper zipper{fname};
+
     std::string project =
         prjname.empty() ?
             boost::filesystem::path(zipper.get_filename()).stem().string() :
@@ -508,6 +536,12 @@ void SL1Archive::export_print(Zipper& zipper,
             
             zipper.add_entry(imgname.c_str(), rst.data(), rst.size());
         }
+
+        for (const ThumbnailData& data : thumbnails)
+            if (data.is_valid())
+                write_thumbnail(zipper, data);
+
+        zipper.finalize();
     } catch(std::exception& e) {
         BOOST_LOG_TRIVIAL(error) << e.what();
         // Rethrow the exception

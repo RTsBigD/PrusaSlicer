@@ -16,6 +16,7 @@
 namespace Slic3r {
 
 class BoundingBox;
+class BoundingBoxf;
 class Line;
 class MultiPoint;
 class Point;
@@ -133,6 +134,7 @@ public:
     Point(const Eigen::MatrixBase<OtherDerived> &other) : Vec2crd(other) {}
     static Point new_scale(coordf_t x, coordf_t y) { return Point(coord_t(scale_(x)), coord_t(scale_(y))); }
     static Point new_scale(const Vec2d &v) { return Point(coord_t(scale_(v.x())), coord_t(scale_(v.y()))); }
+    static Point new_scale(const Vec2f &v) { return Point(coord_t(scale_(v.x())), coord_t(scale_(v.y()))); }
 
     // This method allows you to assign Eigen expressions to MyVectorType
     template<typename OtherDerived>
@@ -175,6 +177,11 @@ inline bool operator<(const Point &l, const Point &r)
     return l.x() < r.x() || (l.x() == r.x() && l.y() < r.y());
 }
 
+inline Point operator* (const Point& l, const double &r)
+{
+    return {coord_t(l.x() * r), coord_t(l.y() * r)};
+}
+
 inline bool is_approx(const Point &p1, const Point &p2, coord_t epsilon = coord_t(SCALED_EPSILON))
 {
 	Point d = (p2 - p1).cwiseAbs();
@@ -213,6 +220,7 @@ inline Point lerp(const Point &a, const Point &b, double t)
 
 BoundingBox get_extents(const Points &pts);
 BoundingBox get_extents(const std::vector<Points> &pts);
+BoundingBoxf get_extents(const std::vector<Vec2d> &pts);
 
 // Test for duplicate points in a vector of points.
 // The points are copied, sorted and checked for duplicates globally.
@@ -252,7 +260,7 @@ namespace int128 {
 // To be used by std::unordered_map, std::unordered_multimap and friends.
 struct PointHash {
     size_t operator()(const Vec2crd &pt) const {
-        return std::hash<coord_t>()(pt.x()) ^ std::hash<coord_t>()(pt.y());
+        return coord_t((89 * 31 + int64_t(pt.x())) * 31 + pt.y());
     }
 };
 

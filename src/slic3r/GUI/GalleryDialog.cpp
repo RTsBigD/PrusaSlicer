@@ -26,10 +26,10 @@
 #include "3DScene.hpp"
 #include "GLCanvas3D.hpp"
 #include "Plater.hpp"
-#include "3DBed.hpp"
 #include "MsgDialog.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/AppConfig.hpp"
+#include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/Format/OBJ.hpp"
@@ -270,15 +270,17 @@ static void generate_thumbnail_from_model(const std::string& filename)
     model.objects[0]->center_around_origin(false);
     model.objects[0]->ensure_on_bed(false);
 
-    const Vec3d bed_center_3d = wxGetApp().plater()->get_bed().get_bounding_box(false).center();
-    const Vec2d bed_center_2d = { bed_center_3d.x(), bed_center_3d.y()};
-    model.center_instances_around_point(bed_center_2d);
+    model.center_instances_around_point(to_2d(wxGetApp().plater()->build_volume().bounding_volume().center()));
 
     GLVolumeCollection volumes;
     volumes.volumes.push_back(new GLVolume());
-    GLVolume* volume = volumes.volumes[0];
+    GLVolume* volume = volumes.volumes.back();
+#if ENABLE_LEGACY_OPENGL_REMOVAL
+    volume->model.init_from(model.mesh());
+#else
     volume->indexed_vertex_array.load_mesh(model.mesh());
     volume->indexed_vertex_array.finalize_geometry(true);
+#endif // ENABLE_LEGACY_OPENGL_REMOVAL
     volume->set_instance_transformation(model.objects[0]->instances[0]->get_transformation());
     volume->set_volume_transformation(model.objects[0]->volumes[0]->get_transformation());
 

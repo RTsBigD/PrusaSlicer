@@ -24,106 +24,7 @@
 #define BOOST_NO_CXX17_HDR_STRING_VIEW
 #endif
 
-#include <boost/multiprecision/integer.hpp>
-
 namespace Slic3r { namespace Geometry {
-
-// This implementation is based on Andrew's monotone chain 2D convex hull algorithm
-Polygon convex_hull(Points pts)
-{
-    std::sort(pts.begin(), pts.end(), [](const Point& a, const Point& b) { return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y()); });
-    pts.erase(std::unique(pts.begin(), pts.end(), [](const Point& a, const Point& b) { return a.x() == b.x() && a.y() == b.y(); }), pts.end());
-
-    Polygon hull;
-    int n = (int)pts.size();
-    if (n >= 3) {
-        int k = 0;
-        hull.points.resize(2 * n);
-        // Build lower hull
-        for (int i = 0; i < n; ++ i) {
-            while (k >= 2 && pts[i].ccw(hull[k-2], hull[k-1]) <= 0)
-                -- k;
-            hull[k ++] = pts[i];
-        }
-        // Build upper hull
-        for (int i = n-2, t = k+1; i >= 0; i--) {
-            while (k >= t && pts[i].ccw(hull[k-2], hull[k-1]) <= 0)
-                -- k;
-            hull[k ++] = pts[i];
-        }
-        hull.points.resize(k);
-        assert(hull.points.front() == hull.points.back());
-        hull.points.pop_back();
-    }
-    return hull;
-}
-
-Pointf3s convex_hull(Pointf3s points)
-{
-    assert(points.size() >= 3);
-    // sort input points
-    std::sort(points.begin(), points.end(), [](const Vec3d &a, const Vec3d &b){ return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y()); });
-
-    int n = points.size(), k = 0;
-    Pointf3s hull;
-
-    if (n >= 3)
-    {
-        hull.resize(2 * n);
-
-        // Build lower hull
-        for (int i = 0; i < n; ++i)
-        {
-            Point p = Point::new_scale(points[i](0), points[i](1));
-            while (k >= 2)
-            {
-                Point k1 = Point::new_scale(hull[k - 1](0), hull[k - 1](1));
-                Point k2 = Point::new_scale(hull[k - 2](0), hull[k - 2](1));
-
-                if (p.ccw(k2, k1) <= 0)
-                    --k;
-                else
-                    break;
-            }
-
-            hull[k++] = points[i];
-        }
-
-        // Build upper hull
-        for (int i = n - 2, t = k + 1; i >= 0; --i)
-        {
-            Point p = Point::new_scale(points[i](0), points[i](1));
-            while (k >= t)
-            {
-                Point k1 = Point::new_scale(hull[k - 1](0), hull[k - 1](1));
-                Point k2 = Point::new_scale(hull[k - 2](0), hull[k - 2](1));
-
-                if (p.ccw(k2, k1) <= 0)
-                    --k;
-                else
-                    break;
-            }
-
-            hull[k++] = points[i];
-        }
-
-        hull.resize(k);
-
-        assert(hull.front() == hull.back());
-        hull.pop_back();
-    }
-
-    return hull;
-}
-
-Polygon convex_hull(const Polygons &polygons)
-{
-    Points pp;
-    for (Polygons::const_iterator p = polygons.begin(); p != polygons.end(); ++p) {
-        pp.insert(pp.end(), p->points.begin(), p->points.end());
-    }
-    return convex_hull(std::move(pp));
-}
 
 bool directions_parallel(double angle1, double angle2, double max_diff)
 {
@@ -132,14 +33,12 @@ bool directions_parallel(double angle1, double angle2, double max_diff)
     return diff < max_diff || fabs(diff - PI) < max_diff;
 }
 
-#if ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
 bool directions_perpendicular(double angle1, double angle2, double max_diff)
 {
     double diff = fabs(angle1 - angle2);
     max_diff += EPSILON;
     return fabs(diff - 0.5 * PI) < max_diff || fabs(diff - 1.5 * PI) < max_diff;
 }
-#endif // ENABLE_OUT_OF_BED_DETECTION_IMPROVEMENTS
 
 template<class T>
 bool contains(const std::vector<T> &vector, const Point &point)
@@ -426,40 +325,36 @@ Vec3d extract_euler_angles(const Eigen::Matrix<double, 3, 3, Eigen::DontAlign>& 
     // reference: http://www.gregslabaugh.net/publications/euler.pdf
     Vec3d angles1 = Vec3d::Zero();
     Vec3d angles2 = Vec3d::Zero();
-    if (std::abs(std::abs(rotation_matrix(2, 0)) - 1.0) < 1e-5)
-    {
-        angles1(2) = 0.0;
-        if (rotation_matrix(2, 0) < 0.0) // == -1.0
-        {
-            angles1(1) = 0.5 * (double)PI;
-            angles1(0) = angles1(2) + ::atan2(rotation_matrix(0, 1), rotation_matrix(0, 2));
+    if (std::abs(std::abs(rotation_matrix(2, 0)) - 1.0) < 1e-5) {
+        angles1.z() = 0.0;
+        if (rotation_matrix(2, 0) < 0.0) { // == -1.0
+            angles1.y() = 0.5 * double(PI);
+            angles1.x() = angles1.z() + ::atan2(rotation_matrix(0, 1), rotation_matrix(0, 2));
         }
-        else // == 1.0
-        {
-            angles1(1) = - 0.5 * (double)PI;
-            angles1(0) = - angles1(2) + ::atan2(- rotation_matrix(0, 1), - rotation_matrix(0, 2));
+        else { // == 1.0
+            angles1.y() = - 0.5 * double(PI);
+            angles1.x() = - angles1.y() + ::atan2(- rotation_matrix(0, 1), - rotation_matrix(0, 2));
         }
         angles2 = angles1;
     }
-    else
-    {
-        angles1(1) = -::asin(rotation_matrix(2, 0));
-        double inv_cos1 = 1.0 / ::cos(angles1(1));
-        angles1(0) = ::atan2(rotation_matrix(2, 1) * inv_cos1, rotation_matrix(2, 2) * inv_cos1);
-        angles1(2) = ::atan2(rotation_matrix(1, 0) * inv_cos1, rotation_matrix(0, 0) * inv_cos1);
+    else {
+        angles1.y() = -::asin(rotation_matrix(2, 0));
+        const double inv_cos1 = 1.0 / ::cos(angles1.y());
+        angles1.x() = ::atan2(rotation_matrix(2, 1) * inv_cos1, rotation_matrix(2, 2) * inv_cos1);
+        angles1.z() = ::atan2(rotation_matrix(1, 0) * inv_cos1, rotation_matrix(0, 0) * inv_cos1);
 
-        angles2(1) = (double)PI - angles1(1);
-        double inv_cos2 = 1.0 / ::cos(angles2(1));
-        angles2(0) = ::atan2(rotation_matrix(2, 1) * inv_cos2, rotation_matrix(2, 2) * inv_cos2);
-        angles2(2) = ::atan2(rotation_matrix(1, 0) * inv_cos2, rotation_matrix(0, 0) * inv_cos2);
+        angles2.y() = double(PI) - angles1.y();
+        const double inv_cos2 = 1.0 / ::cos(angles2.y());
+        angles2.x() = ::atan2(rotation_matrix(2, 1) * inv_cos2, rotation_matrix(2, 2) * inv_cos2);
+        angles2.z() = ::atan2(rotation_matrix(1, 0) * inv_cos2, rotation_matrix(0, 0) * inv_cos2);
     }
 
     // The following euristic is the best found up to now (in the sense that it works fine with the greatest number of edge use-cases)
     // but there are other use-cases were it does not
     // We need to improve it
-    double min_1 = angles1.cwiseAbs().minCoeff();
-    double min_2 = angles2.cwiseAbs().minCoeff();
-    bool use_1 = (min_1 < min_2) || (is_approx(min_1, min_2) && (angles1.norm() <= angles2.norm()));
+    const double min_1 = angles1.cwiseAbs().minCoeff();
+    const double min_2 = angles2.cwiseAbs().minCoeff();
+    const bool use_1 = (min_1 < min_2) || (is_approx(min_1, min_2) && (angles1.norm() <= angles2.norm()));
 
     return use_1 ? angles1 : angles2;
 }
@@ -473,14 +368,6 @@ Vec3d extract_euler_angles(const Transform3d& transform)
     m.col(1).normalize();
     m.col(2).normalize();
     return extract_euler_angles(m);
-}
-
-Transformation::Flags::Flags()
-    : dont_translate(true)
-    , dont_rotate(true)
-    , dont_scale(true)
-    , dont_mirror(true)
-{
 }
 
 bool Transformation::Flags::needs_update(bool dont_translate, bool dont_rotate, bool dont_scale, bool dont_mirror) const
@@ -508,15 +395,14 @@ Transformation::Transformation(const Transform3d& transform)
 
 void Transformation::set_offset(const Vec3d& offset)
 {
-    set_offset(X, offset(0));
-    set_offset(Y, offset(1));
-    set_offset(Z, offset(2));
+    set_offset(X, offset.x());
+    set_offset(Y, offset.y());
+    set_offset(Z, offset.z());
 }
 
 void Transformation::set_offset(Axis axis, double offset)
 {
-    if (m_offset(axis) != offset)
-    {
+    if (m_offset(axis) != offset) {
         m_offset(axis) = offset;
         m_dirty = true;
     }
@@ -524,19 +410,18 @@ void Transformation::set_offset(Axis axis, double offset)
 
 void Transformation::set_rotation(const Vec3d& rotation)
 {
-    set_rotation(X, rotation(0));
-    set_rotation(Y, rotation(1));
-    set_rotation(Z, rotation(2));
+    set_rotation(X, rotation.x());
+    set_rotation(Y, rotation.y());
+    set_rotation(Z, rotation.z());
 }
 
 void Transformation::set_rotation(Axis axis, double rotation)
 {
     rotation = angle_to_0_2PI(rotation);
-    if (is_approx(std::abs(rotation), 2.0 * (double)PI))
+    if (is_approx(std::abs(rotation), 2.0 * double(PI)))
         rotation = 0.0;
 
-    if (m_rotation(axis) != rotation)
-    {
+    if (m_rotation(axis) != rotation) {
         m_rotation(axis) = rotation;
         m_dirty = true;
     }
@@ -544,15 +429,14 @@ void Transformation::set_rotation(Axis axis, double rotation)
 
 void Transformation::set_scaling_factor(const Vec3d& scaling_factor)
 {
-    set_scaling_factor(X, scaling_factor(0));
-    set_scaling_factor(Y, scaling_factor(1));
-    set_scaling_factor(Z, scaling_factor(2));
+    set_scaling_factor(X, scaling_factor.x());
+    set_scaling_factor(Y, scaling_factor.y());
+    set_scaling_factor(Z, scaling_factor.z());
 }
 
 void Transformation::set_scaling_factor(Axis axis, double scaling_factor)
 {
-    if (m_scaling_factor(axis) != std::abs(scaling_factor))
-    {
+    if (m_scaling_factor(axis) != std::abs(scaling_factor)) {
         m_scaling_factor(axis) = std::abs(scaling_factor);
         m_dirty = true;
     }
@@ -560,9 +444,9 @@ void Transformation::set_scaling_factor(Axis axis, double scaling_factor)
 
 void Transformation::set_mirror(const Vec3d& mirror)
 {
-    set_mirror(X, mirror(0));
-    set_mirror(Y, mirror(1));
-    set_mirror(Z, mirror(2));
+    set_mirror(X, mirror.x());
+    set_mirror(Y, mirror.y());
+    set_mirror(Z, mirror.z());
 }
 
 void Transformation::set_mirror(Axis axis, double mirror)
@@ -573,8 +457,7 @@ void Transformation::set_mirror(Axis axis, double mirror)
     else if (abs_mirror != 1.0)
         mirror /= abs_mirror;
 
-    if (m_mirror(axis) != mirror)
-    {
+    if (m_mirror(axis) != mirror) {
         m_mirror(axis) = mirror;
         m_dirty = true;
     }
@@ -592,9 +475,8 @@ void Transformation::set_from_transform(const Transform3d& transform)
     // we can only detect if the matrix contains a left handed reference system
     // in which case we reorient it back to right handed by mirroring the x axis
     Vec3d mirror = Vec3d::Ones();
-    if (m3x3.col(0).dot(m3x3.col(1).cross(m3x3.col(2))) < 0.0)
-    {
-        mirror(0) = -1.0;
+    if (m3x3.col(0).dot(m3x3.col(1).cross(m3x3.col(2))) < 0.0) {
+        mirror.x() = -1.0;
         // remove mirror
         m3x3.col(0) *= -1.0;
     }
@@ -631,8 +513,7 @@ void Transformation::reset()
 
 const Transform3d& Transformation::get_matrix(bool dont_translate, bool dont_rotate, bool dont_scale, bool dont_mirror) const
 {
-    if (m_dirty || m_flags.needs_update(dont_translate, dont_rotate, dont_scale, dont_mirror))
-    {
+    if (m_dirty || m_flags.needs_update(dont_translate, dont_rotate, dont_scale, dont_mirror)) {
         m_matrix = Geometry::assemble_transform(
             dont_translate ? Vec3d::Zero() : m_offset, 
             dont_rotate ? Vec3d::Zero() : m_rotation,
@@ -661,8 +542,7 @@ Transformation Transformation::volume_to_bed_transformation(const Transformation
         // Just set the inverse.
         out.set_from_transform(instance_transformation.get_matrix(true).inverse());
     }
-    else if (is_rotation_ninety_degrees(instance_transformation.get_rotation()))
-    {
+    else if (is_rotation_ninety_degrees(instance_transformation.get_rotation())) {
         // Anisotropic scaling, rotation by multiples of ninety degrees.
         Eigen::Matrix3d instance_rotation_trafo =
             (Eigen::AngleAxisd(instance_transformation.get_rotation().z(), Vec3d::UnitZ()) *
@@ -695,8 +575,8 @@ Transformation Transformation::volume_to_bed_transformation(const Transformation
             scale(i) = pts.col(i).dot(qs.col(i)) / pts.col(i).dot(pts.col(i));
 
         out.set_rotation(Geometry::extract_euler_angles(volume_rotation_trafo));
-        out.set_scaling_factor(Vec3d(std::abs(scale(0)), std::abs(scale(1)), std::abs(scale(2))));
-        out.set_mirror(Vec3d(scale(0) > 0 ? 1. : -1, scale(1) > 0 ? 1. : -1, scale(2) > 0 ? 1. : -1));
+        out.set_scaling_factor(Vec3d(std::abs(scale.x()), std::abs(scale.y()), std::abs(scale.z())));
+        out.set_mirror(Vec3d(scale.x() > 0 ? 1. : -1, scale.y() > 0 ? 1. : -1, scale.z() > 0 ? 1. : -1));
     }
     else
     {
@@ -715,19 +595,15 @@ Transform3d transform3d_from_string(const std::string& transform_str)
     assert(is_decimal_separator_point()); // for atof
     Transform3d transform = Transform3d::Identity();
 
-    if (!transform_str.empty())
-    {
+    if (!transform_str.empty()) {
         std::vector<std::string> mat_elements_str;
         boost::split(mat_elements_str, transform_str, boost::is_any_of(" "), boost::token_compress_on);
 
-        unsigned int size = (unsigned int)mat_elements_str.size();
-        if (size == 16)
-        {
+        const unsigned int size = (unsigned int)mat_elements_str.size();
+        if (size == 16) {
             unsigned int i = 0;
-            for (unsigned int r = 0; r < 4; ++r)
-            {
-                for (unsigned int c = 0; c < 4; ++c)
-                {
+            for (unsigned int r = 0; r < 4; ++r) {
+                for (unsigned int c = 0; c < 4; ++c) {
                     transform(r, c) = ::atof(mat_elements_str[i++].c_str());
                 }
             }
@@ -741,17 +617,17 @@ Eigen::Quaterniond rotation_xyz_diff(const Vec3d &rot_xyz_from, const Vec3d &rot
 {
     return
         // From the current coordinate system to world.
-        Eigen::AngleAxisd(rot_xyz_to(2), Vec3d::UnitZ()) * Eigen::AngleAxisd(rot_xyz_to(1), Vec3d::UnitY()) * Eigen::AngleAxisd(rot_xyz_to(0), Vec3d::UnitX()) *
+        Eigen::AngleAxisd(rot_xyz_to.z(), Vec3d::UnitZ()) * Eigen::AngleAxisd(rot_xyz_to.y(), Vec3d::UnitY()) * Eigen::AngleAxisd(rot_xyz_to.x(), Vec3d::UnitX()) *
         // From world to the initial coordinate system.
-        Eigen::AngleAxisd(-rot_xyz_from(0), Vec3d::UnitX()) * Eigen::AngleAxisd(-rot_xyz_from(1), Vec3d::UnitY()) * Eigen::AngleAxisd(-rot_xyz_from(2), Vec3d::UnitZ());
+        Eigen::AngleAxisd(-rot_xyz_from.x(), Vec3d::UnitX()) * Eigen::AngleAxisd(-rot_xyz_from.y(), Vec3d::UnitY()) * Eigen::AngleAxisd(-rot_xyz_from.z(), Vec3d::UnitZ());
 }
 
 // This should only be called if it is known, that the two rotations only differ in rotation around the Z axis.
 double rotation_diff_z(const Vec3d &rot_xyz_from, const Vec3d &rot_xyz_to)
 {
-    Eigen::AngleAxisd angle_axis(rotation_xyz_diff(rot_xyz_from, rot_xyz_to));
-    Vec3d  axis  = angle_axis.axis();
-    double angle = angle_axis.angle();
+    const Eigen::AngleAxisd angle_axis(rotation_xyz_diff(rot_xyz_from, rot_xyz_to));
+    const Vec3d  axis  = angle_axis.axis();
+    const double angle = angle_axis.angle();
 #ifndef NDEBUG
     if (std::abs(angle) > 1e-8) {
         assert(std::abs(axis.x()) < 1e-8);
@@ -759,207 +635,6 @@ double rotation_diff_z(const Vec3d &rot_xyz_from, const Vec3d &rot_xyz_to)
     }
 #endif /* NDEBUG */
     return (axis.z() < 0) ? -angle : angle;
-}
-
-namespace rotcalip {
-
-using int256_t = boost::multiprecision::int256_t;
-using int128_t = boost::multiprecision::int128_t;
-
-template<class Scalar = int64_t>
-inline Scalar magnsq(const Point &p)
-{
-    return Scalar(p.x()) * p.x() + Scalar(p.y()) * p.y();
-}
-
-template<class Scalar = int64_t>
-inline Scalar dot(const Point &a, const Point &b)
-{
-    return Scalar(a.x()) * b.x() + Scalar(a.y()) * b.y();
-}
-
-template<class Scalar = int64_t>
-inline Scalar dotperp(const Point &a, const Point &b)
-{
-    return Scalar(a.x()) * b.y() - Scalar(a.y()) * b.x();
-}
-
-using boost::multiprecision::abs;
-
-// Compares the angle enclosed by vectors dir and dirA (alpha) with the angle
-// enclosed by -dir and dirB (beta). Returns -1 if alpha is less than beta, 0
-// if they are equal and 1 if alpha is greater than beta. Note that dir is
-// reversed for beta, because it represents the opposite side of a caliper.
-int cmp_angles(const Point &dir, const Point &dirA, const Point &dirB) {
-    int128_t dotA = dot(dir, dirA);
-    int128_t dotB = dot(-dir, dirB);
-    int256_t dcosa = int256_t(magnsq(dirB)) * int256_t(abs(dotA)) * dotA;
-    int256_t dcosb = int256_t(magnsq(dirA)) * int256_t(abs(dotB)) * dotB;
-    int256_t diff = dcosa - dcosb;
-
-    return diff > 0? -1 : (diff < 0 ? 1 : 0);
-}
-
-// A helper class to navigate on a polygon. Given a vertex index, one can
-// get the edge belonging to that vertex, the coordinates of the vertex, the
-// next and previous edges. Stuff that is needed in the rotating calipers algo.
-class Idx
-{
-    size_t m_idx;
-    const Polygon *m_poly;
-public:
-    explicit Idx(const Polygon &p): m_idx{0}, m_poly{&p} {}
-    explicit Idx(size_t idx, const Polygon &p): m_idx{idx}, m_poly{&p} {}
-
-    size_t idx() const { return m_idx; }
-    void set_idx(size_t i) { m_idx = i; }
-    size_t next() const { return (m_idx + 1) % m_poly->size(); }
-    size_t inc() { return m_idx = (m_idx + 1) % m_poly->size(); }
-    Point prev_dir() const {
-        return pt() - (*m_poly)[(m_idx + m_poly->size() - 1) % m_poly->size()];
-    }
-
-    const Point &pt() const { return (*m_poly)[m_idx]; }
-    const Point dir() const { return (*m_poly)[next()] - pt(); }
-    const Point  next_dir() const
-    {
-        return (*m_poly)[(m_idx + 2) % m_poly->size()] - (*m_poly)[next()];
-    }
-    const Polygon &poly() const { return *m_poly; }
-};
-
-enum class AntipodalVisitMode { Full, EdgesOnly };
-
-// Visit all antipodal pairs starting from the initial ia, ib pair which
-// has to be a valid antipodal pair (not checked). fn is called for every
-// antipodal pair encountered including the initial one.
-// The callback Fn has a signiture of bool(size_t i, size_t j, const Point &dir)
-// where i,j are the vertex indices of the antipodal pair and dir is the
-// direction of the calipers touching the i vertex.
-template<AntipodalVisitMode mode = AntipodalVisitMode::Full, class Fn>
-void visit_antipodals (Idx& ia, Idx &ib, Fn &&fn)
-{
-    // Set current caliper direction to be the lower edge angle from X axis
-    int cmp = cmp_angles(ia.prev_dir(), ia.dir(), ib.dir());
-    Idx *current = cmp <= 0 ? &ia : &ib, *other = cmp <= 0 ? &ib : &ia;
-    Idx *initial = current;
-    bool visitor_continue = true;
-
-    size_t start = initial->idx();
-    bool finished = false;
-
-    while (visitor_continue && !finished) {
-        Point current_dir_a = current == &ia ? current->dir() : -current->dir();
-        visitor_continue = fn(ia.idx(), ib.idx(), current_dir_a);
-
-        // Parallel edges encountered. An additional pair of antipodals
-        // can be yielded.
-        if constexpr (mode == AntipodalVisitMode::Full)
-            if (cmp == 0 && visitor_continue) {
-                visitor_continue = fn(current == &ia ? ia.idx() : ia.next(),
-                                      current == &ib ? ib.idx() : ib.next(),
-                                      current_dir_a);
-            }
-
-        cmp = cmp_angles(current->dir(), current->next_dir(), other->dir());
-
-        current->inc();
-        if (cmp > 0) {
-            std::swap(current, other);
-        }
-
-        if (initial->idx() == start) finished = true;
-    }
-}
-
-} // namespace rotcalip
-
-bool convex_polygons_intersect(const Polygon &A, const Polygon &B)
-{
-    using namespace rotcalip;
-
-    // Establish starting antipodals as extremes in XY plane. Use the
-    // easily obtainable bounding boxes to check if A and B is disjoint
-    // and return false if the are.
-    struct BB
-    {
-        size_t         xmin = 0, xmax = 0, ymin = 0, ymax = 0;
-        const Polygon &P;
-        static bool cmpy(const Point &l, const Point &u)
-        {
-            return l.y() < u.y() || (l.y() == u.y() && l.x() < u.x());
-        }
-
-        BB(const Polygon &poly): P{poly}
-        {
-            for (size_t i = 0; i < P.size(); ++i) {
-                if (P[i] < P[xmin]) xmin = i;
-                if (P[xmax] < P[i]) xmax = i;
-                if (cmpy(P[i], P[ymin])) ymin = i;
-                if (cmpy(P[ymax], P[i])) ymax = i;
-            }
-        }
-    };
-
-    BB bA{A}, bB{B};
-    BoundingBox bbA{{A[bA.xmin].x(), A[bA.ymin].y()}, {A[bA.xmax].x(), A[bA.ymax].y()}};
-    BoundingBox bbB{{B[bB.xmin].x(), B[bB.ymin].y()}, {B[bB.xmax].x(), B[bB.ymax].y()}};
-
-//    if (!bbA.overlap(bbB))
-//        return false;
-
-    // Establish starting antipodals as extreme vertex pairs in X or Y direction
-    // which reside on different polygons. If no such pair is found, the two
-    // polygons are certainly not disjoint.
-    Idx imin{bA.xmin, A}, imax{bB.xmax, B};
-    if (B[bB.xmin] < imin.pt())  imin = Idx{bB.xmin, B};
-    if (imax.pt()  < A[bA.xmax]) imax = Idx{bA.xmax, A};
-    if (&imin.poly() == &imax.poly()) {
-        imin = Idx{bA.ymin, A};
-        imax = Idx{bB.ymax, B};
-        if (B[bB.ymin] < imin.pt())  imin = Idx{bB.ymin, B};
-        if (imax.pt()  < A[bA.ymax]) imax = Idx{bA.ymax, A};
-    }
-
-    if (&imin.poly() == &imax.poly())
-        return true;
-
-    bool found_divisor = false;
-    visit_antipodals<AntipodalVisitMode::EdgesOnly>(
-        imin, imax,
-        [&imin, &imax, &found_divisor](size_t ia, size_t ib, const Point &dir) {
-            //        std::cout << "A" << ia << " B" << ib << " dir " <<
-            //        dir.x() << " " << dir.y() << std::endl;
-            const Polygon &A = imin.poly(), &B = imax.poly();
-
-            Point ref_a = A[(ia + 2) % A.size()], ref_b = B[(ib + 2) % B.size()];
-
-            bool is_left_a = dotperp( dir, ref_a - A[ia]) > 0;
-            bool is_left_b = dotperp(-dir, ref_b - B[ib]) > 0;
-
-            // If both reference points are on the left (or right) of their
-            // respective support lines and the opposite support line is to
-            // the right (or left), the divisor line is found. We only test
-            // the reference point, as by definition, if that is on one side,
-            // all the other points must be on the same side of a support
-            // line. If the support lines are collinear, the polygons must be
-            // on the same side of their respective support lines.
-
-            auto d = dotperp(dir, B[ib] - A[ia]);
-            if (d == 0) {
-                // The caliper lines are collinear, not just parallel
-                found_divisor = (is_left_a && is_left_b) || (!is_left_a && !is_left_b);
-            } else if (d > 0) { // B is to the left of (A, A+1)
-                found_divisor = !is_left_a && !is_left_b;
-            } else { // B is to the right of (A, A+1)
-                found_divisor = is_left_a && is_left_b;
-            }
-
-            return !found_divisor;
-        });
-
-    // Intersects if the divisor was not found
-    return !found_divisor;
 }
 
 }} // namespace Slic3r::Geometry

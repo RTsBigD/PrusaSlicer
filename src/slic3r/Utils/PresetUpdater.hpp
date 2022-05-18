@@ -57,12 +57,15 @@ public:
 	bool install_bundles_rsrc(std::vector<std::string> bundles, bool snapshot = true) const;
 
 	void on_update_notification_confirm();
+
+	bool version_check_enabled() const;
+
 private:
 	struct priv;
 	std::unique_ptr<priv> p;
 };
 
-wxDECLARE_EVENT(EVT_SLIC3R_VERSION_ONLINE, wxCommandEvent);
-wxDECLARE_EVENT(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, wxCommandEvent);
+//wxDECLARE_EVENT(EVT_SLIC3R_VERSION_ONLINE, wxCommandEvent);
+//wxDECLARE_EVENT(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, wxCommandEvent);
 }
 #endif
